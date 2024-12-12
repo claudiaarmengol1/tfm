@@ -1,0 +1,176 @@
+---
+title: "analysis"
+output:
+  word_document: default
+  html_document: default
+date: "2024-10-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# required packages
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(grid)
+library(Hmisc)
+library(corrplot)
+library(GGally)
+library(cowplot)
+library(dlm)
+library(lme4)
+
+
+```
+
+Import data
+```{r}
+PAN_data <- read.csv("PAN_data.csv")
+data_healthy <- PAN_data[PAN_data$disease == "Healthy",]
+data_COPD <- PAN_data[PAN_data$disease == "COPD",]
+data_asthma <- PAN_data[PAN_data$disease == "Asthma",]
+
+```
+
+ANALYSIS
+
+```{r}
+# Function to generate individual plots for each participant
+plot_participant_data <- function(data, participant_id) {
+  participant_data <- subset(data, PAN_ID == participant_id)
+  
+  p1 <- ggplot(participant_data, aes(x = Time, y = VE)) + 
+        geom_point(color = "blue") + labs(title = paste("Participant", participant_id, "- VE over Time")) + theme_minimal()
+
+  p2 <- ggplot(participant_data, aes(x = Time, y = HR)) + 
+        geom_point(color = "red") + labs(title = "HR over Time") + theme_minimal()
+
+  p3 <- ggplot(participant_data, aes(x = Time, y = RR)) + 
+        geom_point(color = "green") + labs(title = "RR over Time") + theme_minimal()
+
+  p4 <- ggplot(participant_data, aes(x = Time, y = METs)) + 
+        geom_point(color = "purple") + labs(title = "METs over Time") + theme_minimal()
+  
+  # Arrange the 4 plots with the title above them
+  combined_plot <- grid.arrange(p1, p2, p3, p4, ncol = 2)
+  
+  ggsave(filename = paste0("test_plots_by_participant/Participant_", participant_id, ".png"), 
+         plot = combined_plot, 
+         width = 12, 
+         height = 10)
+
+}
+
+participants <- unique(PAN_data_test$PAN_ID)
+
+for (pid in participants) {
+  plot_participant_data(PAN_data_test, pid)
+  Sys.sleep(0.5)
+}
+
+```
+
+Correlation matrix
+```{r}
+corr_data <- PAN_data[, c("VE", "HR", "Load", "RR", "FEO2", "FECO2", "age", "bmi", "fvc", "fev1", "fev1_fvc_r", "disease", "PAN_ID")]
+corr_data_h <- select_if(corr_data[corr_data$disease == 'No RD',], is.numeric)
+corr_data_c <- select_if(corr_data[corr_data$disease == 'COPD',], is.numeric)
+corr_data_a <- select_if(corr_data[corr_data$disease == 'Asthma',], is.numeric)
+
+# Calculate correlation matrix healthy
+cor_matrix_h <- cor(corr_data_h, use = "complete.obs")
+corrplot(cor_matrix_h, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+
+# COPD
+cor_matrix_c <- cor(corr_data_c, use = "complete.obs")
+corrplot(cor_matrix_c, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+
+# asthma
+cor_matrix_a <- cor(corr_data_a, use = "complete.obs")
+corrplot(cor_matrix_a, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+
+```
+
+
+plots VE vs other variables for each of the cohorts 
+```{r}
+ggplot(PAN_data, aes(x=Time,y= VE))+
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs( x= "Time", y = "Minute Ventilation", title = "Time vs VE")
+
+
+ggplot(PAN_data, aes(x=RR,y= VE))+
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs( x= "Breathing rate", y = "Minute Ventilation", title = "Breathing Rate vs VE")
+
+
+ggplot(PAN_data, aes(x=METs,y= VE))+
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs( x= "Load", y = "Minute Ventilation", title = "METs vs VE")
+
+
+ggplot(PAN_data, aes(x=Load,y= VE))+
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs( x= "Load", y = "Minute Ventilation", title = "Load vs VE")
+
+```
+
+Correlation plots (full datasets)
+```{r}
+# All data
+vars_int_all <- PAN_data[,c("HR","RR","VE")]
+plot_all <- ggpairs(vars_int_all, lower = list(continuous = "smooth"), diag = list(continuous = "density"), axisLabels = "none", progress = FALSE) + ggtitle("All")
+
+# Healthy
+vars_int_healthy <- data_healthy[,c("HR","RR","VE")]
+plot_healthy <-ggpairs(vars_int_healthy, lower = list(continuous = "smooth"), diag = list(continuous = "density"), axisLabels= "none", progress = FALSE) + ggtitle("Healthy")
+
+# COPD
+vars_int_COPD <- data_COPD[,c("HR","RR","VE")]
+plot_copd <-ggpairs(vars_int_COPD, lower = list(continuous = "smooth"), diag = list(continuous = "density"), axisLabels= "none", progress = FALSE) + ggtitle("COPD")
+
+# Asthma
+vars_int_asthma <- data_asthma[,c("HR","RR","VE")]
+plot_asthma <-ggpairs(vars_int_asthma, lower = list(continuous = "smooth"), diag = list(continuous = "density"), axisLabels= "none", progress = FALSE) + ggtitle("Asthma")
+
+ggsave("corr_all.png", plot = plot_all, width = 10, height = 10)
+ggsave("corr_healthy.png", plot = plot_healthy, width = 10, height = 10)
+ggsave("corr_copd.png", plot = plot_copd, width = 10, height = 10)
+ggsave("corr_asthma.png", plot = plot_asthma, width = 10, height = 10)
+
+```
+
+Correlation plots by participant
+```{r}
+# Loop to generate them and save onto folder in directory
+plot_participant_data <- function(data, participant_id) {
+  participant_data <- subset(data, PAN_ID == participant_id)
+  # only time series variables of interest
+  vars_int <- participant_data[, c("HR", "RR", "VE")]
+  plot <- ggpairs(vars_int,
+                  lower = list(continuous = "smooth"),
+                  diag = list(continuous = "density"),
+                  axisLabels = "none",
+                  progress = FALSE) +
+           ggtitle(paste("Pairwise Correlation for Participant", participant_id))
+    ggsave(filename = paste0("plots_by_participant/Correlation_Participant_", participant_id, ".png"), 
+         plot = plot, 
+         width = 12, 
+         height = 10)}
+
+participants <- unique(PAN_data$PAN_ID)
+
+for (pid in participants) {
+  plot_participant_data(PAN_data, pid)
+  Sys.sleep(0.5)
+}
+
+```

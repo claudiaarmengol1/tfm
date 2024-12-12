@@ -367,7 +367,9 @@ data_asthma <- PAN_data[PAN_data$disease == "Asthma",]
 ```
 
 Exercise intensity calculations
-```{r EI healthy}
+```{r}
+
+## Healthy and asthma
 # by age
 data_healthy <- data_healthy %>%
   mutate(
@@ -393,7 +395,6 @@ data_healthy <- data_healthy %>%
       age >= 65 & METs >= 4.8 & METs <= 6.7 ~ "Vigorous",
       age >= 65 & METs >= 6.8 ~ "Near to Maximal",
       
-      # Default case for missing values or undefined conditions
       TRUE ~ NA_character_
     )
   )
@@ -416,6 +417,54 @@ ggplot(data_healthy, aes(x = ex_intensity)) +
   ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+# asthma
+data_asthma <- data_asthma %>%
+  mutate(
+    ex_intensity = case_when(
+      # Age 20-39
+      age <= 39 & METs < 2.4 ~ "Very Light",
+      age <= 39 & METs >= 2.4 & METs <= 4.7 ~ "Light",
+      age <= 39 & METs >= 4.8 & METs <= 7.1 ~ "Moderate",
+      age <= 39 & METs >= 7.2 & METs <= 10.1 ~ "Vigorous",
+      age <= 39 & METs >= 10.2 ~ "Near to Maximal",
+      
+      # Age 40-64
+      age >= 40 & age <= 64 & METs < 2.0 ~ "Very Light",
+      age >= 40 & age <= 64 & METs >= 2.0 & METs <= 3.9 ~ "Light",
+      age >= 40 & age <= 64 & METs >= 4.0 & METs <= 5.9 ~ "Moderate",
+      age >= 40 & age <= 64 & METs >= 6.0 & METs <= 8.4 ~ "Vigorous",
+      age >= 40 & age <= 64 & METs >= 8.5 ~ "Near to Maximal",
+      
+      # Age >= 65
+      age >= 65 & METs < 1.6 ~ "Very Light",
+      age >= 65 & METs >= 1.6 & METs <= 3.1 ~ "Light",
+      age >= 65 & METs >= 3.2 & METs <= 4.7 ~ "Moderate",
+      age >= 65 & METs >= 4.8 & METs <= 6.7 ~ "Vigorous",
+      age >= 65 & METs >= 6.8 ~ "Near to Maximal",
+      
+      TRUE ~ NA_character_
+    )
+  )
+data_asthma <- data_asthma %>%
+  mutate(
+    ex_intensity = factor(
+      ex_intensity,
+      levels = c("Very Light", "Light", "Moderate", "Vigorous", "Near to Maximal"),
+      ordered = TRUE
+    )
+  )
+
+ggplot(data_asthma, aes(x = ex_intensity)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(
+    title = "Healthy distribution of Exercise Intensity using METs by age",
+    x = "Exercise Intensity",
+    y = "Count"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
 ```
 
 

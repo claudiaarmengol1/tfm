@@ -23,20 +23,176 @@ library(GGally)
 library(cowplot)
 library(dlm)
 library(lme4)
-
+library(lmerTest)
+library(MASS)
+library(Metrics)
 
 ```
 
-Import data
+Import data - check whether it makes more sense to import them separately already, as i have saved them by cohorts too
 ```{r}
 PAN_data <- read.csv("PAN_data.csv")
+
+PAN_data <- PAN_data %>% dplyr::select(-tlc:-sgaw)
+# adapt structure post-importing
+PAN_data <- PAN_data %>%
+  mutate(
+    PAN_ID = as.factor(PAN_ID),
+    sex = as.factor(sex),
+    smoke = as.factor(smoke),
+    copd_sev = as.factor(copd_sev),
+    asthma_sev = as.factor(asthma_sev),
+    EI_lag = as.factor(EI_lag),
+    ex_intensity = as.factor(ex_intensity)
+  )
+
+
+
 data_healthy <- PAN_data[PAN_data$disease == "Healthy",]
 data_COPD <- PAN_data[PAN_data$disease == "COPD",]
 data_asthma <- PAN_data[PAN_data$disease == "Asthma",]
 
+
+
 ```
 
-ANALYSIS
+Histograms - univariate analysis
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(officer)
+library(rvg)
+
+# Create a new Word document
+doc <- read_docx()
+
+# Loop through each variable in the dataset
+for (var in names(data_healthy)) {
+  # Check if the variable is numeric
+  if (is.numeric(data_healthy[[var]])) {
+    # Calculate optimal number of bins using Sturges' rule
+    num_bins <- nclass.Sturges(data_healthy[[var]])
+    
+    # Generate histogram with dynamic bins
+    p <- ggplot(data_healthy, aes_string(x = var)) +
+      geom_histogram(bins = num_bins, fill = "blue", color = "black", alpha = 0.7) +
+      labs(title = paste("Histogram of", var), x = var, y = "Frequency") +
+      theme_minimal()
+    
+    # Add histogram to Word document
+    doc <- doc %>%
+      body_add_par(value = paste("Histogram of", var), style = "heading 2") %>%
+      body_add_gg(value = p, width = 6, height = 4)
+  }
+}
+
+# Save the Word document
+print(doc, target = "histograms_data_healthy.docx")
+
+cat("Histograms saved to histograms_data_healthy.docx\n")
+
+```
+
+```{r}
+
+# Create a new Word document
+doc <- read_docx()
+
+# Loop through each variable in the dataset
+for (var in names(data_COPD)) {
+  # Check if the variable is numeric
+  if (is.numeric(data_COPD[[var]])) {
+    # Calculate optimal number of bins using Sturges' rule
+    num_bins <- nclass.Sturges(data_COPD[[var]])
+    
+    # Generate histogram with dynamic bins
+    p <- ggplot(data_COPD, aes_string(x = var)) +
+      geom_histogram(bins = num_bins, fill = "blue", color = "black", alpha = 0.7) +
+      labs(title = paste("Histogram of", var), x = var, y = "Frequency") +
+      theme_minimal()
+    
+    # Add histogram to Word document
+    doc <- doc %>%
+      body_add_par(value = paste("Histogram of", var), style = "heading 2") %>%
+      body_add_gg(value = p, width = 6, height = 4)
+  }
+}
+
+# Save the Word document
+print(doc, target = "histograms_data_COPD.docx")
+
+cat("Histograms saved to histograms_data_healthy.docx\n")
+
+```
+
+```{r}
+# Create a new Word document
+doc <- read_docx()
+
+# Loop through each variable in the dataset
+for (var in names(data_asthma)) {
+  # Check if the variable is numeric
+  if (is.numeric(data_asthma[[var]])) {
+    # Calculate optimal number of bins using Sturges' rule
+    num_bins <- nclass.Sturges(data_asthma[[var]])
+    
+    # Generate histogram with dynamic bins
+    p <- ggplot(data_asthma, aes_string(x = var)) +
+      geom_histogram(bins = num_bins, fill = "blue", color = "black", alpha = 0.7) +
+      labs(title = paste("Histogram of", var), x = var, y = "Frequency") +
+      theme_minimal()
+    
+    # Add histogram to Word document
+    doc <- doc %>%
+      body_add_par(value = paste("Histogram of", var), style = "heading 2") %>%
+      body_add_gg(value = p, width = 6, height = 4)
+  }
+}
+
+# Save the Word document
+print(doc, target = "histograms_data_asthma.docx")
+
+cat("Histograms saved to histograms_data_healthy.docx\n")
+```
+
+```{r}
+# Load necessary libraries
+library(GGally)
+library(ggplot2)
+
+# Sample dataset: Replace this with your dataset (e.g., data_healthy)
+# Example:
+# data <- data_healthy
+
+# Customize the scatterplot matrix
+scatterplot_matrix <- ggpairs(
+  data_asthma, 
+  columns = c("HR", "RR", "VO2", "VE"), # Replace with your variables of interest
+  upper = list(continuous = wrap("cor", size = 5, color = "blue")), # Correlation with color
+  lower = list(continuous = wrap("points", alpha = 0.5, color = "darkred")), # Scatter plots with color
+  diag = list(continuous = wrap("densityDiag", fill = "lightblue", color = "darkblue")), # Density with fill
+  progress = FALSE
+)
+
+# Customize theme
+scatterplot_matrix <- scatterplot_matrix +
+  ggtitle("Pairwise Scatterplot Physiological Variables Asthma")+
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.text = element_text(size = 10)
+  )
+
+# Save the plot
+ggsave("pairwise_scatterplot_matrix_asthma.png", scatterplot_matrix, width = 12, height = 12, dpi = 300)
+
+# Display the plot
+print(scatterplot_matrix)
+
+```
+
+
+ANALYSIS - visualization
 
 ```{r}
 # Function to generate individual plots for each participant
@@ -58,45 +214,151 @@ plot_participant_data <- function(data, participant_id) {
   # Arrange the 4 plots with the title above them
   combined_plot <- grid.arrange(p1, p2, p3, p4, ncol = 2)
   
-  ggsave(filename = paste0("test_plots_by_participant/Participant_", participant_id, ".png"), 
+  ggsave(filename = paste0("COPD_plots_by_participant/Participant_", participant_id, ".png"), 
          plot = combined_plot, 
          width = 12, 
          height = 10)
-
 }
 
-participants <- unique(PAN_data_test$PAN_ID)
+
+participants <- unique(data_healthy$PAN_ID)
 
 for (pid in participants) {
-  plot_participant_data(PAN_data_test, pid)
+  plot_participant_data(data_healthy, pid)
   Sys.sleep(0.5)
 }
+
+
+participants <- unique(data_COPD$PAN_ID)
+
+for (pid in participants) {
+  plot_participant_data(data_COPD, pid)
+  Sys.sleep(0.5)
+}
+
+
+participants <- unique(data_asthma$PAN_ID)
+
+for (pid in participants) {
+  plot_participant_data(data_asthma, pid)
+  Sys.sleep(0.5)
+}
+
+
+```
+
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(gridExtra)
+library(officer)
+
+# Function to generate and save individual plots for each participant
+plot_participant_data <- function(data, participant_id) {
+  participant_data <- subset(data, PAN_ID == participant_id)
+  
+  p1 <- ggplot(participant_data, aes(x = Time, y = VE)) + 
+    geom_point(color = "blue") + labs(title = paste("Participant", participant_id, "- VE over Time")) + theme_minimal()
+  
+  p2 <- ggplot(participant_data, aes(x = Time, y = HR)) + 
+    geom_point(color = "red") + labs(title = "HR over Time") + theme_minimal()
+  
+  p3 <- ggplot(participant_data, aes(x = Time, y = RR)) + 
+    geom_point(color = "green") + labs(title = "RR over Time") + theme_minimal()
+  
+  p4 <- ggplot(participant_data, aes(x = Time, y = METs)) + 
+    geom_point(color = "purple") + labs(title = "METs over Time") + theme_minimal()
+  
+  # Combine the four plots into a grid layout
+  combined_plot <- arrangeGrob(p1, p2, p3, p4, ncol = 2)
+  
+  # Save the combined plot as a temporary image file
+  file_name <- tempfile(fileext = ".png")
+  ggsave(file_name, combined_plot, width = 12, height = 8, dpi = 300)
+  
+  return(file_name)
+}
+
+# Function to add participant plots to the Word document
+add_participant_plots_to_doc <- function(data, doc) {
+  participants <- unique(data$PAN_ID)
+  
+  for (pid in participants) {
+    # Generate the plots for the participant and save as an image
+    img_path <- plot_participant_data(data, pid)
+    
+    # Add participant header and image to the document
+    doc <- doc %>%
+      body_add_par(value = paste("Participant", pid), style = "heading 1") %>%
+      body_add_img(src = img_path, width = 6, height = 4)
+  }
+  
+  return(doc)
+}
+
+# Create a new Word document
+doc <- read_docx()
+
+# Add data for different datasets
+doc <- add_participant_plots_to_doc(data_healthy, doc)
+doc <- add_participant_plots_to_doc(data_COPD, doc)
+doc <- add_participant_plots_to_doc(data_asthma, doc)
+
+# Save the Word document
+print(doc, target = "participant_plots.docx")
+
+cat("Participant plots saved to participant_plots.docx\n")
 
 ```
 
 Correlation matrix
 ```{r}
-corr_data <- PAN_data[, c("VE", "HR", "Load", "RR", "FEO2", "FECO2", "age", "bmi", "fvc", "fev1", "fev1_fvc_r", "disease", "PAN_ID")]
-corr_data_h <- select_if(corr_data[corr_data$disease == 'No RD',], is.numeric)
+corr_data <- PAN_data[, c("VE", "HR", "Load", "RR", "METs","age", "height", "bmi", "fvc", "fev1", "disease", "PAN_ID")]
+corr_data_h <- select_if(corr_data[corr_data$disease == 'Healthy',], is.numeric)
 corr_data_c <- select_if(corr_data[corr_data$disease == 'COPD',], is.numeric)
 corr_data_a <- select_if(corr_data[corr_data$disease == 'Asthma',], is.numeric)
 
-# Calculate correlation matrix healthy
+# Calculate correlation matrix COPD
 cor_matrix_h <- cor(corr_data_h, use = "complete.obs")
-corrplot(cor_matrix_h, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+png("correlation_matrix_healthy.png", width = 800, height = 600)
+corrplot(cor_matrix_h, 
+         method = "color", 
+         type = "upper", 
+         tl.col = "black", 
+         tl.srt = 45, 
+         title = "Correlation Matrix for Healthy Cohort", 
+         mar = c(0, 0, 2, 0))
+dev.off()
 
 # COPD
 cor_matrix_c <- cor(corr_data_c, use = "complete.obs")
-corrplot(cor_matrix_c, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+png("correlation_matrix_COPD.png", width = 800, height = 600)
+corrplot(cor_matrix_c, 
+         method = "color", 
+         type = "upper", 
+         tl.col = "black", 
+         tl.srt = 45, 
+         title = "Correlation Matrix for COPD Cohort", 
+         mar = c(0, 0, 2, 0))
+dev.off()
 
 # asthma
 cor_matrix_a <- cor(corr_data_a, use = "complete.obs")
-corrplot(cor_matrix_a, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+png("correlation_matrix_asthma.png", width = 800, height = 600)
+corrplot(cor_matrix_a, 
+         method = "color", 
+         type = "upper", 
+         tl.col = "black", 
+         tl.srt = 45, 
+         title = "Correlation Matrix for Asthma Cohort", 
+         mar = c(0, 0, 2, 0))
+dev.off()
 
 ```
 
 
-plots VE vs other variables for each of the cohorts 
+plots VE vs other variables for each of the cohorts - quite useless (remove?)
 ```{r}
 ggplot(PAN_data, aes(x=Time,y= VE))+
   geom_point() +
@@ -104,7 +366,7 @@ ggplot(PAN_data, aes(x=Time,y= VE))+
   labs( x= "Time", y = "Minute Ventilation", title = "Time vs VE")
 
 
-ggplot(PAN_data, aes(x=RR,y= VE))+
+ggplot(data_COPD, aes(x=VE,y= HR))+
   geom_point() +
   geom_smooth(method = "lm", se = FALSE) +
   labs( x= "Breathing rate", y = "Minute Ventilation", title = "Breathing Rate vs VE")
@@ -123,15 +385,16 @@ ggplot(PAN_data, aes(x=Load,y= VE))+
 
 ```
 
+
 Correlation plots (full datasets)
 ```{r}
 # All data
 vars_int_all <- PAN_data[,c("HR","RR","VE")]
 plot_all <- ggpairs(vars_int_all, lower = list(continuous = "smooth"), diag = list(continuous = "density"), axisLabels = "none", progress = FALSE) + ggtitle("All")
 
-# Healthy
-vars_int_healthy <- data_healthy[,c("HR","RR","VE")]
-plot_healthy <-ggpairs(vars_int_healthy, lower = list(continuous = "smooth"), diag = list(continuous = "density"), axisLabels= "none", progress = FALSE) + ggtitle("Healthy")
+# COPD
+vars_int_COPD <- data_healthy[,c("HR","RR","VE")]
+plot_COPD <-ggpairs(vars_int_COPD, lower = list(continuous = "smooth"), diag = list(continuous = "density"), axisLabels= "none", progress = FALSE) + ggtitle("COPD")
 
 # COPD
 vars_int_COPD <- data_COPD[,c("HR","RR","VE")]
@@ -142,7 +405,7 @@ vars_int_asthma <- data_asthma[,c("HR","RR","VE")]
 plot_asthma <-ggpairs(vars_int_asthma, lower = list(continuous = "smooth"), diag = list(continuous = "density"), axisLabels= "none", progress = FALSE) + ggtitle("Asthma")
 
 ggsave("corr_all.png", plot = plot_all, width = 10, height = 10)
-ggsave("corr_healthy.png", plot = plot_healthy, width = 10, height = 10)
+ggsave("corr_healthy.png", plot = plot_COPD, width = 10, height = 10)
 ggsave("corr_copd.png", plot = plot_copd, width = 10, height = 10)
 ggsave("corr_asthma.png", plot = plot_asthma, width = 10, height = 10)
 
@@ -174,3 +437,1886 @@ for (pid in participants) {
 }
 
 ```
+
+
+MODELS
+### MODEL Healthy
+```{r model healthy}
+formula_healthy1 <- VE ~ HR + HR_lag + RR +  RR_lag + ex_intensity + EI_lag + age + height + bmi + fev1 + sex + smoke + (1 | PAN_ID)
+
+model_healthy1 <- lmer(formula_healthy1, data = data_healthy, REML = FALSE)
+
+summary(model_healthy1)
+
+# using StepAIC i get the same values
+step_model <- step(model_healthy1)
+print(step_model)
+
+r2(model_healthy1)
+```
+From this model, we can conclude the following:
+- VE is strongly influenced by heart rate (HR), respiratory rate (RR), exercise intensity, and some individual characteristics (height, BMI).
+- Random effects indicate that there is substantial between-participant variability in VE.
+- Smoking status, FEV1 and sex are not significantly affecting VE
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_healthy$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_healthy %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_healthy %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_healthy1,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+  
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Healthy Model 1: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 100, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+
+```
+
+
+Build model without variables with low predictive capacity
+```{r}
+formula_healthy2 <- VE ~ HR + HR_lag + RR + RR_lag + ex_intensity + EI_lag + height + bmi + age + (1 | PAN_ID)
+
+model_healthy2 <- lmer(formula_healthy2, data = data_healthy)
+
+summary(model_healthy2)
+
+anova(model_healthy1, model_healthy2)
+
+r2(model_healthy2)
+
+```
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_healthy$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_healthy %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_healthy %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_healthy2,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+  
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Healthy Model 2: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 100, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+
+
+```
+
+In this model (removing sex, smoke, fev1) we can say:
+- all the predictors are significant (except for age, which we are making an exception for)
+- there is considerable variability across participants
+
+model 3 - add interaction between HR and RR (R suggested scaling)
+```{r}
+data_healthy <- data_healthy %>%
+  mutate(
+    HR_scaled = scale(HR),
+    RR_scaled = scale(RR),
+    HR_lag_scaled = scale(HR_lag),
+    RR_lag_scaled = scale(RR_lag),
+    age_scaled = scale(age),
+    bmi_scaled = scale(bmi),
+    height_scaled = scale(height)
+  )
+
+formula_healthy3 <- VE ~ HR_scaled * RR_scaled + ex_intensity + HR_lag_scaled + RR_lag_scaled + EI_lag + bmi_scaled + height_scaled + age_scaled +  (1 | PAN_ID)
+
+formula_healthy3 <- 
+model_healthy3 <- lmer(formula_healthy3,  data = data_healthy)
+
+summary(model_healthy3)
+
+anova(model_healthy2, model_healthy3)
+
+r2(model_healthy3)
+
+```
+
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_healthy$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_healthy %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_healthy %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_healthy3,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+  
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Healthy Model 3: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 100, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+
+```
+
+model 4 - interaction HR : exercise intensity
+```{r}
+formula_healthy4 <- VE ~ HR_scaled * ex_intensity + RR_scaled +  HR_lag_scaled + RR_lag_scaled + EI_lag +
+        bmi_scaled + height_scaled + age_scaled +  (1 | PAN_ID)
+
+model_healthy4 <- lmer(formula_healthy4,  data = data_healthy)
+
+summary(model_healthy4)
+
+anova(model_healthy2, model_healthy4)
+
+r2(model_healthy4)
+
+```
+4 explains more than 3
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_healthy$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_healthy %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_healthy %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_healthy4,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+  
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Healthy Model 4: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 100, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+
+```
+
+model 5 - log transforming VE
+```{r}
+data_healthy$log_VE <- log(data_healthy$VE + 1)  # To avoid log(0)
+
+formula_healthy5 <- log_VE ~ HR_scaled * ex_intensity +  RR_scaled +  HR_lag_scaled + RR_lag_scaled + 
+  EI_lag + age_scaled + bmi_scaled + height_scaled + (1 | PAN_ID)
+
+model_healthy5 <- lmer(formula_healthy5, data = data_healthy)
+
+summary(model_healthy5)
+
+r2(model_healthy5)
+
+```
+
+
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_healthy$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_healthy %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_healthy %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_healthy5, data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$log_VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # Back-transform predictions to original scale
+  test_data$VE_predicted <- exp(test_data$log_VE_predicted)
+
+  # 8: Evaluate Model Performance on Original Scale
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+  mape <- mean(abs((test_data$VE - test_data$VE_predicted) / test_data$VE)) * 100
+
+  # Store fold metrics
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2, MAPE = mape)
+
+  # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Healthy Model 5: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 100, y = 30,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+
+```
+
+anova interpretation example: 
+"Model comparisons based on AIC, BIC, and likelihood ratio tests indicated that model_healthy3, which included scaled predictors and interaction terms, provided a significantly better fit to the data compared to model_healthy2 (p < 2.2e-16). The inclusion of scaled variables improved numerical stability, and interactions allowed for capturing complex relationships between predictors. Further diagnostics confirmed the model met key assumptions of linear mixed modeling."
+
+
+MODEL DIAGNOSTICS
+```{r}
+
+plot(resid(model_healthy))
+which(abs(resid(model_healthy_rescaled)) > 15)  # Find indices with large residuals
+library(car)
+influence_plot(model_healthy_rescaled)
+
+plot(data_healthy$HR_z, resid(model_healthy_rescaled), main = "Residuals vs HR_z")
+
+```
+
+
+
+VE PREDICTION using models determined (mathematical and practical) - 70 test - 30 train (cross validating)
+
+-validation
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_healthy$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_healthy %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_healthy %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_healthy3,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+# Final Metrics
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R^2:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+plot_data <- test_data %>% dplyr::select(VE, VE_predicted, ex_intensity)
+
+ # Create the scatter plot
+ggplot(plot_data, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "healthy model Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal()
+
+
+```
+
+
+BLAND ALTMAN PLOT
+```{r}
+# Create a data frame for plotting
+bland_altman_df <- data.frame(
+  Means = (test_data$VE_predicted + test_data$VE) / 2,
+  Differences = test_data$VE_predicted - test_data$VE
+)
+
+# Calculate mean difference and limits of agreement
+mean_diff <- mean(bland_altman_df$Differences)
+loa_upper <- mean_diff + 1.96 * sd(bland_altman_df$Differences)
+loa_lower <- mean_diff - 1.96 * sd(bland_altman_df$Differences)
+
+# Generate the Bland-Altman plot
+ggplot(bland_altman_df, aes(x = Means, y = Differences)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_hline(yintercept = mean_diff, color = "red", linetype = "solid", size = 1) +
+  geom_hline(yintercept = loa_upper, color = "darkgreen", linetype = "dashed", size = 1) +
+  geom_hline(yintercept = loa_lower, color = "darkgreen", linetype = "dashed", size = 1) +
+  labs(
+    title = "Bland-Altman Plot healthy model 5",
+    x = "Mean of Predicted and Observed Values",
+    y = "Difference (Predicted - Observed)"
+  ) +
+  theme_minimal()
+
+```
+
+heteroscedacity
+```{r}
+plot(fitted(model_healthy3), resid(model_healthy3), 
+     xlab = "Fitted Values", ylab = "Residuals",
+     main = "Residuals vs Fitted Values")
+abline(h = 0, col = "red")
+library(lmtest)
+bptest(model_healthy3)
+
+```
+
+
+### MODELS COPD
+
+limpiamos participantes que no tienen suficientes valores
+```{r}
+data_COPD <- data_COPD %>%
+  filter(!PAN_ID %in% c("PAN_0059_1", "PAN_0002_1", "PAN_0033_1", "PAN_0075_1", "PAN_0076_1"))
+#input recovered data smoke participant 0205
+data_COPD$smoke[data_COPD$PAN_ID == "PAN_0021_1"] <- 1
+```
+
+model 1
+```{r}
+formula_COPD1 <- VE ~ HR + HR_lag + RR +  RR_lag + ex_intensity + EI_lag + age + height + bmi + fev1 + sex + smoke + copd_sev + (1 | PAN_ID)
+
+model_COPD1 <- lmer(formula_COPD1, data = data_COPD, REML = FALSE)
+
+summary(model_COPD1)
+
+# using i get the same values
+step_model <- step(model_COPD1)
+print(step_model)
+
+r2(model_COPD1)
+
+```
+From this model, we can conclude the following:
+- VE is strongly influenced by heart rate (HR), respiratory rate (RR), exercise intensity, and some individual characteristics (height, BMI).
+- Random effects indicate that there is substantial between-participant variability in VE.
+- Smoking status, COPD severity and sex are not significantly affecting VE
+
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_COPD$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_COPD %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_COPD %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_COPD1,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+  
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "COPD Model 1: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 60, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+
+```
+
+From the model output, we obtain the following conclusions:
+- HR, RR, exercise intensity, age, height, and BMI all have significant positive relationships with VE.
+- Smoking (smoke2) has a negative effect on VE, while the other smoking categories and COPD severity levels do not show significant effects.
+- Sex, HR lagged, and COPD severity categories do not show significant effects on VE.
+- The model explains both individual and residual variability in VE, with participant-level differences contributing moderately to the model.
+
+Build model without variables with low predictive capacity (sex and copd severity)
+```{r}
+formula_COPD2 <- VE ~ HR + RR +  RR_lag + ex_intensity + EI_lag + age + height + bmi + (1 | PAN_ID)
+
+model_COPD2 <- lmer(formula_COPD2, data = data_COPD, REML = FALSE)
+
+summary(model_COPD2)
+
+anova(model_COPD1, model_COPD2)
+
+r2(model_COPD2)
+
+```
+
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_COPD$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_COPD %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_COPD %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_COPD2,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+  
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "COPD Model 2: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 60, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+
+```
+
+model 3 - add interaction between terms (R suggested rescaling)
+```{r}
+data_COPD <- data_COPD %>%
+  mutate(
+    HR_scaled = scale(HR),
+    RR_scaled = scale(RR),
+    HR_lag_scaled = scale(HR_lag),
+    RR_lag_scaled = scale(RR_lag),
+    age_scaled = scale(age),
+    bmi_scaled = scale(bmi),
+    height_scaled = scale(height),
+    fev1_scaled = scale(fev1)
+  )
+
+
+formula_COPD3 <- VE ~ HR * RR +  RR_lag + ex_intensity + EI_lag + age + height + bmi + (1 | PAN_ID)
+
+model_COPD3 <- lmer(formula_COPD3, data = data_COPD, REML = FALSE)
+
+summary(model_COPD3)
+
+anova(model_COPD2, model_COPD3)
+
+r2(model_COPD3)
+
+```
+
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_COPD$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_COPD %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_COPD %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_COPD3,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+  
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "COPD Model 3: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 60, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+```
+
+
+model 4 - interaction HR : exercise intensity
+```{r}
+
+formula_COPD4 <- VE ~ HR * ex_intensity + RR +  RR_lag + EI_lag + age + height + bmi + (1 | PAN_ID)
+
+model_COPD4 <- lmer(formula_COPD4, data = data_COPD, REML = FALSE)
+
+summary(model_COPD4)
+
+anova(model_COPD2, model_COPD4)
+
+r2(model_COPD4)
+
+```
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_COPD$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_COPD %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_COPD %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_COPD4,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+  
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "COPD Model 4: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 60, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+```
+
+
+
+
+model 5 - log transforming VE
+```{r}
+data_COPD$log_VE <- log(data_COPD$VE + 1)  # To avoid log(0)
+
+formula_COPD5 <- log_VE ~ HR_scaled * ex_intensity + HR_lag_scaled + RR_lag_scaled + RR_scaled +
+        EI_lag + age_scaled + height_scaled + bmi_scaled + fev1_scaled + (1 | PAN_ID)
+
+
+model_COPD5 <- lmer(formula_COPD5, data = data_COPD)
+
+summary(model_COPD5)
+
+anova(model_COPD4, model_COPD3)
+
+r2(model_COPD5)
+
+```
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_COPD$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_COPD %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_COPD %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_COPD5, data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$log_VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # Back-transform predictions to original scale
+  test_data$VE_predicted <- exp(test_data$log_VE_predicted)
+  test_data$VE_actual <- exp(test_data$log_VE)
+
+  # 8: Evaluate Model Performance on Original Scale
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # Store fold metrics
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2, MAPE = mape)
+
+  # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "COPD Model 5: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  # Annotate metrics
+  annotate("text", x = 65,y = 30,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+                          hjust = 0, size = 4)
+
+```
+
+
+
+
+BLAND ALTMAN PLOT - model 2
+```{r}
+# Create a data frame for plotting
+bland_altman_df <- data.frame(
+  Means = (test_data$VE_predicted + test_data$VE) / 2,
+  Differences = test_data$VE_predicted - test_data$VE
+)
+
+# Calculate mean difference and limits of agreement
+mean_diff <- mean(bland_altman_df$Differences)
+loa_upper <- mean_diff + 1.96 * sd(bland_altman_df$Differences)
+loa_lower <- mean_diff - 1.96 * sd(bland_altman_df$Differences)
+
+# Generate the Bland-Altman plot
+ggplot(bland_altman_df, aes(x = Means, y = Differences)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_hline(yintercept = mean_diff, color = "red", linetype = "solid", size = 1) +
+  geom_hline(yintercept = loa_upper, color = "darkgreen", linetype = "dashed", size = 1) +
+  geom_hline(yintercept = loa_lower, color = "darkgreen", linetype = "dashed", size = 1) +
+  labs(
+    title = "Bland-Altman Plot COPD model 2",
+    x = "Mean of Predicted and Observed Values",
+    y = "Difference (Predicted - Observed)"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+```{r random effects evaluation}
+# random effects
+rand_effect_h <- ranef(model_COPD3)
+# Extract random effects for PAN_ID
+ranef_df_h <- as.data.frame(ranef(model_COPD)$PAN_ID)
+# Add PAN_ID column from row names
+ranef_df_h$PAN_ID <- rownames(ranef_df_h)
+# Rename columns for clarity
+colnames(ranef_df_h) <- c("Intercept", "PAN_ID")
+# Plot
+ggplot(ranef_df_h, aes(x = reorder(PAN_ID, Intercept), y = Intercept)) +
+  geom_point(color = "blue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    title = "Random Effects: Intercept by participant",
+    x = "Participant ID",
+    y = "Random Intercept"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+
+
+
+### ASTHMA MODELS
+esto va en data cleaning
+```{r}
+data_asthma$cpet_protocol[data_asthma$PAN_ID %in% c("PAN_0022_4", "PAN_0022_5", "PAN_0022_6", "PAN_0072_1", "PAN_0083_1", "PAN_0087_1", "PAN_0092_1", "PAN_0090_1", "PAN_0101_1", "PAN_0103_1", "PAN_0106_1", "PAN_0103_1", "PAN_0107_1")] <- 2
+  
+data_asthma$cpet_protocol <- as.factor(data_asthma$cpet_protocol)
+```
+
+
+model 1
+```{r model COPD}
+formula_asthma1 <- VE ~ HR + HR_lag + RR +  RR_lag + ex_intensity + EI_lag + age + height + bmi + fev1 + sex + smoke + cpet_protocol + (1 | PAN_ID)
+
+model_asthma1 <- lmer(formula_asthma1, data = data_asthma, REML = FALSE)
+
+summary(model_asthma1)
+
+# use to determine which variables to keep
+step_model <- step(model_asthma1)
+print(step_model)
+
+r2(model_asthma1)
+
+```
+From the model output, we obtain the following conclusions:
+- HR, RR, exercise intensity, age, height, and BMI all have significant positive relationships with VE.
+- Smoking (smoke2) has a negative effect on VE, while the other smoking categories and COPD severity levels do not show significant effects.
+- Exercise intensity lag, Sex and COPD severity categories do not show significant effects on VE.
+- The model explains both individual and residual variability in VE, with participant-level differences contributing moderately to the model.
+
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_asthma$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_asthma %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_asthma %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_asthma1,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Asthma Model 1: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 75, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+
+
+```
+Build model without variables with low predictive capacity (age, sex, smoking status and asthma severity)
+```{r}
+formula_asthma2 <- VE ~ HR + HR_lag + RR + RR_lag + ex_intensity + EI_lag + age + height + bmi + cpet_protocol + (1 | PAN_ID)
+
+model_asthma2 <- lmer(formula_asthma2, data = data_asthma, REML = FALSE)
+
+summary(model_asthma2)
+
+anova(model_asthma1, model_asthma2)
+```
+
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_asthma$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_asthma %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_asthma %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_asthma2,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Asthma Model 2: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 75, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+
+
+```
+model 3 - add interaction between terms (R suggested rescaling)
+```{r}
+data_asthma <- data_asthma %>%
+  mutate(
+    HR_scaled = scale(HR),
+    RR_scaled = scale(RR),
+    HR_lag_scaled = scale(HR_lag),
+    RR_lag_scaled = scale(RR_lag),
+    age_scaled = scale(age),
+    bmi_scaled = scale(bmi),
+    height_scaled = scale(height)
+  )
+
+formula_asthma3 <- VE ~ HR_scaled * RR_scaled + HR_lag_scaled + RR_lag_scaled + ex_intensity + EI_lag + age_scaled + height_scaled + bmi_scaled +  cpet_protocol + (1 | PAN_ID)
+
+model_asthma3 <- lmer(formula_asthma3, data = data_asthma, REML = FALSE)
+
+summary(model_asthma3)
+
+anova(model_asthma2, model_asthma3)
+```
+
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_asthma$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_asthma %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_asthma %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_asthma3,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Asthma Model 3: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 75, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+
+```
+
+
+
+
+```{r}
+formula_asthma4 <- VE ~ HR_scaled * RR_scaled + HR_lag_scaled + ex_intensity + 
+                           bmi_scaled + height_scaled + (1 | cpet_protocol) + (1 | PAN_ID)
+
+
+model_asthma4 <- lmer(formula_asthma4, data = data_asthma, REML = FALSE)
+
+summary(model_asthma4)
+
+step(model_asthma4)
+r2(model_asthma4)
+anova(model_asthma3, model_asthma4)
+
+```
+
+
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_asthma$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_asthma %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_asthma %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_asthma4,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+
+    # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Asthma Model 4: Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  annotate("text", x = 75, y = 20,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+           hjust = 0, size = 4)
+
+```
+
+log transform VE
+```{r}
+data_asthma$log_VE <- log(data_asthma$VE)
+
+formula_asthma5 <- log_VE ~ HR_scaled * RR_scaled + HR_lag_scaled + RR_lag_scaled + ex_intensity + EI_lag + age_scaled + height_scaled + bmi_scaled +  cpet_protocol + (1 | PAN_ID)
+
+model_asthma5 <- lmer(formula_asthma5, data = data_asthma, REML = FALSE)
+
+summary(model_asthma5)
+r2(model_asthma5)
+step(model_asthma5)
+
+anova(model_asthma3, model_asthma4)
+```
+
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_asthma$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_asthma %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_asthma %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_asthma5, data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$log_VE_predicted <- predict(model, newdata = test_data, allow.new.levels = TRUE)
+
+  # Back-transform predictions to original scale
+  test_data$VE_predicted <- exp(test_data$log_VE_predicted)
+
+  # 8: Evaluate Model Performance on Original Scale
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # Store fold metrics
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2, MAPE = mape)
+
+  # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Asthma Model 5 Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  # Annotate metrics
+  annotate("text", x = 65,y = 30,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+                          hjust = 0, size = 4)
+
+```
+
+2 models - one per protocol
+Protocol 1
+```{r}
+data_prot1 <- subset(data_asthma, cpet_protocol == 1)
+
+data_prot1$PAN_ID <- droplevels(data_prot1$PAN_ID)
+
+
+formula_asthma5 <- VE ~ HR_scaled * RR_scaled + HR_lag_scaled + RR_lag_scaled + ex_intensity + EI_lag + age_scaled + height_scaled + bmi_scaled + (1 | PAN_ID)
+
+model_protocol1 <- lmer(formula_asthma5, data = data_prot1)
+
+summary(model_protocol1)
+
+# Step
+step <- step(model_protocol1)
+print(step)
+
+formula_asthma6 <- VE ~ HR_scaled * RR_scaled + HR_lag_scaled + ex_intensity + EI_lag + height_scaled + bmi_scaled + (1 | PAN_ID)
+
+model_protocol2 <- lmer(formula_asthma6, data = data_prot1)
+
+summary(model_protocol2)
+
+anova(model_protocol1, model_protocol2)
+```
+
+```{r}
+data_prot2 <- subset(data_asthma, cpet_protocol == 2)
+
+model_protocol2 <- lmer(formula_asthma5,data = data_prot2)
+
+summary(model_protocol2)
+```
+
+try protocol 2 with log VE
+```{r}
+formula_asthma6 <- log(VE) ~ HR_scaled * RR_scaled + HR_lag_scaled + ex_intensity + 
+                                bmi_scaled + height_scaled + (1 | PAN_ID)
+model_prot2_2 <- lmer(formula_asthma6, data = data_prot2)
+
+```
+
+
+
+BLAND ALTMAN PLOT
+```{r}
+# Create a data frame for plotting
+bland_altman_df <- data.frame(
+  Means = (test_data$VE_predicted + test_data$VE) / 2,
+  Differences = test_data$VE_predicted - test_data$VE
+)
+
+# Calculate mean difference and limits of agreement
+mean_diff <- mean(bland_altman_df$Differences)
+loa_upper <- mean_diff + 1.96 * sd(bland_altman_df$Differences)
+loa_lower <- mean_diff - 1.96 * sd(bland_altman_df$Differences)
+
+# Generate the Bland-Altman plot
+ggplot(bland_altman_df, aes(x = Means, y = Differences)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_hline(yintercept = mean_diff, color = "red", linetype = "solid", size = 1) +
+  geom_hline(yintercept = loa_upper, color = "darkgreen", linetype = "dashed", size = 1) +
+  geom_hline(yintercept = loa_lower, color = "darkgreen", linetype = "dashed", size = 1) +
+  labs(
+    title = "Bland-Altman Plot asthma model 3",
+    x = "Mean of Predicted and Observed Values",
+    y = "Difference (Predicted - Observed)"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+# PRACTICAL MODELS
+
+make the same as above but using only HR (+ lagged) and descriptors
+```{r}
+library(MASS)
+library(lmerTest)
+
+# Fit the initial model with lmerTest
+model_pract1 <- lmer(form_pract1, data = data_asthma)
+
+# Stepwise selection
+step_model <- step(model_pract1)
+summary(step_model)
+
+form_pract1 <- VE ~ HR + HR_lag + age + height + bmi + sex + smoke + asthma_sev + ex_intensity + (1 | PAN_ID)
+
+model_pract1 <- lmer(form_pract1, data = data_asthma, REML = FALSE)
+
+summary(model_pract1)
+
+form_pract2 <- VE ~ HR + HR_lag + age + height + bmi + sex + asthma_sev + ex_intensity + (1 | PAN_ID)
+
+model_pract2 <- lmer(form_pract2, data = data_asthma, REML = FALSE)
+
+summary(model_pract2)
+
+```
+
+
+### impact of spirometry models
+
+# Healthy spiro
+using best predictive model from objective 1
+```{r}
+data_healthy_sp <- data_healthy[!is.na(data_healthy$fvc),]
+
+data_healthy_sp$PAN_ID <- droplevels(data_healthy_sp$PAN_ID)
+
+data_healthy_sp <- data_healthy_sp %>%
+  mutate(
+    HR_scaled = scale(HR),
+    RR_scaled = scale(RR),
+    HR_lag_scaled = scale(HR_lag),
+    RR_lag_scaled = scale(RR_lag),
+    age_scaled = scale(age),
+    bmi_scaled = scale(bmi),
+    height_scaled = scale(height),
+    fev1_scaled = scale(fev1),
+    fvc_scaled = scale(fvc)
+  )
+
+formula_healthy_sp <- log_VE ~ HR_scaled * ex_intensity +  RR_scaled +  HR_lag_scaled + RR_lag_scaled + EI_lag + age_scaled + bmi_scaled + height_scaled + fev1_scaled + fvc_scaled + (1 | PAN_ID)
+
+model_healthy_sp <- lmer(formula_healthy_sp, data = data_healthy_sp)
+
+summary(model_healthy_sp)
+
+formula_healthy_nosp <- log_VE ~ HR_scaled * ex_intensity +  RR_scaled +  HR_lag_scaled + RR_lag_scaled + EI_lag + age_scaled + bmi_scaled + height_scaled + (1 | PAN_ID)
+
+model_healthy_nosp <- lmer(formula_healthy_nosp, data = data_healthy_sp)
+
+summary(model_healthy_nosp)
+
+anova(model_healthy_nosp, model_healthy_sp)
+step_sp <- step(model_healthy_sp)
+print(step_sp)
+
+# Install the package if not already installed
+install.packages("performance")
+
+# Load the package
+library(performance)
+
+# Calculate R-squared
+r2_with <- r2(model_healthy_sp) # Model with FEV1 and FVC
+r2_without <- r2(model_healthy_nosp) # Model without FEV1 and FVC
+
+# Print the R^2 values
+print(r2_with)
+print(r2_without)
+
+
+```
+
+
+# COPD spiro
+
+```{r}
+data_COPD_sp <- data_COPD[!is.na(data_COPD$fvc), ]
+
+data_COPD_sp$PAN_ID <- droplevels(data_COPD_sp$PAN_ID)
+
+data_COPD_sp <- data_COPD_sp %>%
+  mutate(
+    HR_scaled = scale(HR),
+    RR_scaled = scale(RR),
+    RR_lag_scaled = scale(RR_lag),
+    age_scaled = scale(age),
+    bmi_scaled = scale(bmi),
+    height_scaled = scale(height),
+    fev1_scaled = scale(fev1),
+    fvc_scaled = scale(fvc)
+  )
+
+formula_COPD_sp <- VE ~ HR + RR +  RR_lag + ex_intensity + EI_lag + age + height + bmi + 
+  fev1_scaled + fvc_scaled +  (1 | PAN_ID)
+
+model_COPD_sp <- lmer(formula_COPD_sp,  data = data_COPD_sp)
+
+summary(model_COPD_sp)
+
+step_sp <- step(model_COPD_sp)
+print(step_sp)
+
+formula_COPD_nosp <- VE ~ HR + RR +  RR_lag + ex_intensity + EI_lag + age + height + bmi + (1 | PAN_ID)
+
+model_COPD_nosp <- lmer(formula_COPD_nosp,  data = data_COPD_sp)
+
+summary(model_COPD_nosp)
+
+anova(model_COPD_sp, model_COPD_nosp)
+
+# Calculate R-squared
+r2_with <- r2(model_COPD_sp) # Model with FEV1 and FVC
+r2_without <- r2(model_COPD_nosp) # Model without FEV1 and FVC
+
+# Print the R^2 values
+print(r2_with)
+print(r2_without)
+
+
+```
+
+
+```{r}
+set.seed(53664775)  # For reproducibility
+
+# 1: Extract Unique Participants
+participants <- unique(data_COPD_sp$PAN_ID)
+
+# 2: Create Cross-Validation Groups
+k <- 8  # Number of folds
+folds <- cut(seq_along(participants), breaks = k, labels = FALSE)  # Divide into k groups
+
+# 3: Shuffle Participants Randomly
+participants <- sample(participants)  # Randomize participant order
+
+# 4: Cross-Validation Loop
+results <- list()
+all_predictions <- data.frame()  # Store all predictions for plotting
+
+
+for (fold in 1:k) {
+  # 5: Create Train/Test Split
+  test_participants <- participants[folds == fold]  # Assign participants to test fold
+  train_participants <- participants[folds != fold] # Remaining participants go to train fold
+
+  train_data <- data_COPD_sp %>% filter(PAN_ID %in% train_participants)
+  test_data <- data_COPD_sp %>% filter(PAN_ID %in% test_participants)
+
+  # 6: Fit Model
+  model <- lmer(formula_COPD_sp,data = train_data)
+
+  # 7: Predict on Test Set
+  test_data$VE_predicted <- pmax(predict(model, newdata = test_data, allow.new.levels = TRUE), 0)
+
+  # 8: Evaluate Model Performance
+  mae <- mae(test_data$VE, test_data$VE_predicted)
+  rmse <- rmse(test_data$VE, test_data$VE_predicted)
+  r2 <- cor(test_data$VE, test_data$VE_predicted)^2
+
+  # 9: Store Results for the Fold
+  results[[paste0("Fold", fold)]] <- data.frame(MAE = mae, RMSE = rmse, R2 = r2)
+  # Collect predictions for plotting
+  all_predictions <- rbind(all_predictions, test_data)
+}
+
+# 10: Combine and Print Results
+results_df <- do.call(rbind, results)
+print(results_df)
+
+cat("Cross-Validation Averages:\n")
+cat("MAE:", mean(results_df$MAE), "\n")
+cat("RMSE:", mean(results_df$RMSE), "\n")
+cat("R²:", mean(results_df$R2), "\n")
+
+# Plot predicted vs observed values
+ggplot(all_predictions, aes(x = VE, y = VE_predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "COPD Model spirometry Predicted vs. Observed VE",
+       x = "Observed VE",
+       y = "Predicted VE") +
+  theme_minimal() +
+  # Annotate plot with metrics
+  annotate("text", x = 65,y = 30,
+           label = paste0("MAE: ", round(mean(results_df$MAE), 3), 
+                          "\nRMSE: ", round(mean(results_df$RMSE), 3), 
+                          "\nR²: ", round(mean(results_df$R2), 4)),
+                          hjust = 0, size = 4)
+
+```
+
+
+# asthma
+```{r}
+data_asthma_sp <- data_asthma[!is.na(data_asthma$fvc), ]
+
+data_asthma_sp <- data_asthma_sp %>%
+  mutate(
+    HR_scaled = scale(HR),
+    RR_scaled = scale(RR),
+    HR_lag_scaled = scale(HR_lag),
+    age_scaled = scale(age),
+    bmi_scaled = scale(bmi),
+    height_scaled = scale(height),
+    fev1_scaled = scale(fev1),
+    fvc_scaled = scale(fvc)
+  )
+
+formula_asthma_sp <- VE ~ HR_scaled * RR_scaled +  ex_intensity + HR_lag_scaled +
+        age_scaled + fev1_scaled + fvc_scaled + bmi_scaled + height_scaled + asthma_sev + (1 | PAN_ID)
+
+model_asthma_sp <- lmer(formula_asthma_sp,  data = data_asthma_sp)
+
+summary(model_asthma_sp)
+
+formula_asthma_nosp <- VE ~ HR_scaled * RR_scaled +  ex_intensity + HR_lag_scaled +
+        age_scaled + bmi_scaled + height_scaled + asthma_sev + (1 | PAN_ID)
+
+model_asthma_nosp <- lmer(formula_asthma_nosp,  data = data_asthma_sp)
+
+summary(model_asthma_nosp)
+
+anova(model_asthma_sp, model_asthma_nosp)
+
+# Calculate R-squared
+r2_with <- r2(model_asthma_sp) # Model with FEV1 and FVC
+r2_without <- r2(model_asthma_nosp) # Model without FEV1 and FVC
+
+# Print the R^2 values
+print(r2_with)
+print(r2_without)
+
+
+```
+
+
+#### Impact of disease
+
+```{r}
+model_disease1 <- lmer(VE ~ scale(HR) + scale(RR) + ex_intensity + scale(height) + scale(bmi) + scale(fev1) + scale(age) + scale(smoke) + disease + (1 | PAN_ID), data = PAN_data)
+
+summary(model_disease1)
+
+```
+
+
+

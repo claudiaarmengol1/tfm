@@ -9,12 +9,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-# packages required for this script
+# packages required
 library(readr)
 library(dplyr)
 library(lubridate)
 library(tidyr)
 library(stringr)
+library(dplyr)
+library(zoo)
+library(table1)
 ```
 
 ```{r import data}
@@ -62,13 +65,13 @@ cpet_data$Time <- hms::as_hms(seconds)
 
 cpet_data$PAN_ID_short <- str_extract(cpet_data$PAN_ID, "^PAN_\\d{4}")
 
-# Keep variables of interest
+# Keep variables of interest to have a more manageable dataset
 cpet_data <- cpet_data[,c("PAN_ID","PAN_ID_short","Time","Step","Load","VE","HR","RR","VO2","VCO2")]
 
 # # Export, to have the csv at hand
 # write.csv(cpet_data, file = "cpet_data.csv", row.names = FALSE)
 # # Import file
-# cpet_data <- read_csv("cpet_data.csv")
+cpet_data <- read_csv("cpet_data.csv")
 
 ################################################################################
 ################   Import REDCap data (descriptives)  ##########################
@@ -114,45 +117,22 @@ redcap_data$PAN_ID[redcap_data$PAN_ID=='PAN_172'] <- 'PAN_0172'
 
 
 # Delete unnecessary variables - need to rewrite
-redcap_data$record_id <- NULL
-redcap_data$redcap_repeat_instance <-NULL
-redcap_data$redcap_repeat_instrument <- NULL
-redcap_data$nhc <- NULL
-redcap_data$identification_complete <- NULL
-redcap_data$clinical_data_complete <- NULL
-redcap_data$cpet_field <- NULL
-redcap_data$reason_stop <- NULL
-redcap_data$dyspnea_pre <- NULL
-redcap_data$fatigue_pre <- NULL
-redcap_data$dyspnea_post <- NULL
-redcap_data$fatigue_post <- NULL
-redcap_data$treatment___1 <- NULL
-redcap_data$treatment___2 <- NULL
-redcap_data$treatment___3 <- NULL
-redcap_data$treatment___4 <- NULL
-redcap_data$treatment___5 <- NULL
-redcap_data$treatment___6 <- NULL
-redcap_data$treatment___7 <- NULL
-redcap_data$treatment___8 <- NULL
-redcap_data$o2_dose <- NULL
-redcap_data$o2_freq <- NULL
-redcap_data$cv_treat___1 <- NULL
-redcap_data$cv_treat___2 <- NULL
-redcap_data$cv_treat___3 <- NULL
-redcap_data$cv_treat___4 <- NULL
-redcap_data$other_treat <- NULL
-redcap_data$comments <- NULL
+# Keep variables of interest to have a more manageable dataset
+redcap_data <- redcap_data[,c("PAN_ID","sex","ethnic","age","height","weight","smoke","freq_smoke",
+                              "unit_smoke","mwt","mwt_dist","disease","fvc","fvc_pred","fev1","fev1_pred",
+                              "fev1_fvc_r","tlc","tlcpred","rv","rvpred","rv_tlc","raw","sgaw",
+                              "cpet_protocol","copd_sev","asthma_sev")]
 
 # # save to have csv in folder
 # write.csv(redcap_data,"redcap_data.csv",row.names = FALSE)
 # # import
-# redcap_data <- read.csv("redcap_data.csv")
+redcap_data <- read.csv("redcap_data.csv")
 
 # join descriptives and CPET data
 PAN_data <- cpet_data %>%
   left_join(redcap_data, by = c("PAN_ID_short" = "PAN_ID"))
 
-
+PAN_data$PAN_ID <- as.factor(PAN_data$PAN_ID)
 ```
 
 CLEAN DATA
@@ -162,6 +142,7 @@ Remove recovery time (as this could affect the prediction)
 PAN_data <- PAN_data %>%
   filter(!(Step %in% c("Rep", "R 2", "R 1")))
 ```
+
 
 Missings
 ```{r}
@@ -173,64 +154,6 @@ missing_summary <- PAN_data %>%
 print(missing_summary)
 ```
 
-TIME RESOLUTIONS - 5s, 15s, 30s, 1min 
-```{r}
-# currently at breath by breath
-
-# Time in POSIXct format
-cpet_data$Time <- as.POSIXct(cpet_data$Time, format = )
-
-###### 5 second intervals
-cpet_data_10s <- cpet_data %>%
-  mutate(Time = floor_date(Time, unit = "1 second")) %>% 
-  group_by(PAN_ID, Time_10s) %>%
-  summarise(across(everything(), mean, na.rm = TRUE), .groups = 'drop')
-
-cpet_data_10s$Time_10s <- as.numeric(cpet_data_10s$Time_10s)
-# Fix Time variable
-seconds <- as.numeric(cpet_data_10s$Time_10s)
-cpet_data_10s$Time_10s <- hms::as_hms(seconds)
-cpet_data_10s$Time <- cpet_data_10s$Time_10s
-
-
-######  30 second intervals
-cpet_data_30s <- cpet_data %>%
-  mutate(Time_30s = floor_date(Time, unit = "30 seconds")) %>%
-  group_by(PAN_ID, Time_30s) %>%
-  summarise(across(everything(), mean, na.rm = TRUE), .groups = 'drop')
-
-cpet_data_30s$Time_30s <- as.numeric(cpet_data_30s$Time_30s)
-# Fix Time variable
-seconds <- as.numeric(cpet_data_30s$Time_30s)
-cpet_data_30s$Time_30s <- hms::as_hms(seconds)
-cpet_data_30s$Time <- cpet_data_30s$Time_30s
-
-
-######  1 minute intervals
-cpet_data_60s <- cpet_data %>%
-  mutate(Time_60s = floor_date(Time, unit = "1 minute")) %>%
-  group_by(PAN_ID, Time_60s) %>%
-  summarise(across(everything(), mean, na.rm = TRUE), .groups = 'drop')
-cpet_data_60s$Time_60s <- as.numeric(cpet_data_60s$Time_60s)
-# Fix Time variable
-seconds <- as.numeric(cpet_data_60s$Time_60s)
-cpet_data_60s$Time_60s <- hms::as_hms(seconds)
-cpet_data_60s$Time <- cpet_data_60s$Time_60s
-
-# merge redcap data with aggregated CPET data
-PAN_data <- cpet_data %>%
-  left_join(redcap_data, by = "PAN_ID")
-
-PAN_data_10s <- cpet_data_10s %>%
-  left_join(redcap_data, by = "PAN_ID")
-
-PAN_data_30s <- cpet_data_30s %>%
-  left_join(redcap_data, by = "PAN_ID")
-
-PAN_data_60s <- cpet_data_60s %>%
-  left_join(redcap_data, by = "PAN_ID")
-
-```
 
 GENERATE VARIABLES
 ```{r}
@@ -238,7 +161,7 @@ GENERATE VARIABLES
 PAN_data$bmi <- PAN_data$weight / ((PAN_data$height/100)^2)
 
 # METs
-PAN_data$METs <- ((PAN_data$VO2 *1000) / PAN_data$weight ) / 3.5
+PAN_data$METs <- ((PAN_data$VO2 * 1000) / PAN_data$weight ) / 3.5
 
 # Respiratory Exchange Ratio
 PAN_data$RER <- PAN_data$VCO2 / PAN_data$VO2
@@ -266,6 +189,104 @@ PAN_data <- PAN_data %>%
   group_by(PAN_ID) %>%
   mutate(VO2_max = max(VO2, na.rm = TRUE)) %>%
   ungroup()
+
+# exercise intensity
+PAN_data <- PAN_data %>%
+    mutate(
+      ex_intensity = if_else(
+        disease %in% c("Healthy", "Asthma"),
+        case_when(
+        # Age 20-39
+        age <= 39 & METs < 2.4 ~ "Very Light",
+        age <= 39 & METs < 4.8 ~ "Light",
+        age <= 39 & METs < 7.2 ~ "Moderate",
+        age <= 39 & METs < 10.2 ~ "Vigorous",
+        age <= 39 & METs >= 10.2 ~ "Near to Maximal",
+        
+        # Age 40-64
+        age >= 40 & age <= 64 & METs < 2.0 ~ "Very Light",
+        age >= 40 & age <= 64 & METs < 4.0 ~ "Light",
+        age >= 40 & age <= 64 & METs < 6.0 ~ "Moderate",
+        age >= 40 & age <= 64 & METs < 8.5 ~ "Vigorous",
+        age >= 40 & age <= 64 & METs >= 8.5 ~ "Near to Maximal",
+        
+        # Age >= 65
+        age >= 65 & METs < 1.6 ~ "Very Light",
+        age >= 65 & METs < 3.2 ~ "Light",
+        age >= 65 & METs < 4.8 ~ "Moderate",
+        age >= 65 & METs < 6.8 ~ "Vigorous",
+        age >= 65 & METs >= 6.8 ~ "Near to Maximal",
+        
+        TRUE ~ NA_character_
+      ),
+              case_when(
+          # Age 20-39
+          age <= 39 & METs < 2.4 ~ "Very Light",
+          age <= 39 & METs >= 2.4 & METs < 4.8 ~ "Light",
+          age <= 39 & METs >= 4.8 & METs < 7.2 ~ "Moderate",
+          age <= 39 & METs >= 7.2 & METs < 10.2 ~ "Vigorous",
+          age <= 39 & METs >= 10.2 ~ "Near to Maximal",
+
+          # Age 40-49
+          age >= 40 & age <= 49 & METs < 2.0 ~ "Very Light",
+          age >= 40 & age <= 49 & METs >= 2.0 & METs < 4.0 ~ "Light",
+          age >= 40 & age <= 49 & METs >= 4.0 & METs < 6.0 ~ "Moderate",
+          age >= 40 & age <= 49 & METs >= 6.0 & METs < 8.5 ~ "Vigorous",
+          age >= 40 & age <= 49 & METs >= 8.5 ~ "Near to Maximal",
+
+          # Age >= 50
+          age >= 50 & METs < 1.6 ~ "Very Light",
+          age >= 50 & METs >= 1.6 & METs < 3.2 ~ "Light",
+          age >= 50 & METs >= 3.2 & METs < 4.8 ~ "Moderate",
+          age >= 50 & METs >= 4.8 & METs < 6.8 ~ "Vigorous",
+          age >= 50 & METs >= 6.8 ~ "Near to Maximal",
+
+          TRUE ~ NA_character_
+              )
+      ),
+      ex_intensity = factor(
+        ex_intensity,
+        levels = c("Very Light", "Light", "Moderate", "Vigorous", "Near to Maximal"),
+        ordered = FALSE
+      )
+    )
+
+# HR lag
+PAN_data$Time <- hms::parse_hms(PAN_data$Time)
+
+PAN_data <- PAN_data %>%
+  mutate(Time_seconds = as.numeric(Time)) %>%
+  arrange(Time_seconds)
+PAN_data <- PAN_data %>%
+  group_by(PAN_ID) %>%
+  mutate(HR_lag = sapply(Time_seconds, function(t) {
+    mean(HR[Time_seconds >= (t - 10) & Time_seconds < t], na.rm = TRUE)
+  })) %>%
+  ungroup()
+PAN_data <- PAN_data %>%
+  mutate(HR_lag = ifelse(is.na(HR_lag), HR, HR_lag))
+
+# RR lag
+PAN_data <- PAN_data %>%
+  group_by(PAN_ID) %>%
+  mutate(RR_lag = sapply(Time_seconds, function(t) {
+    mean(RR[Time_seconds >= (t - 10) & Time_seconds < t], na.rm = TRUE)
+  })) %>%
+  ungroup()
+PAN_data <- PAN_data %>%
+  mutate(RR_lag = ifelse(is.na(RR_lag), RR, RR_lag))
+
+# exercise intensity lag
+PAN_data <- PAN_data %>%
+  group_by(PAN_ID) %>%  # Group by participant ID
+  mutate(EI_lag = ex_intensity[match(Time_seconds - 5, Time_seconds)]) %>% 
+  ungroup() %>%
+  mutate(EI_lag = ifelse(is.na(EI_lag), ex_intensity, EI_lag))
+
+# Remove seconds variable generated
+PAN_data <- PAN_data %>%
+  dplyr::select(-Time_seconds)
+
 ```
 
 Remove outliers (by participant) for time series variables (VE, HR and RR)
@@ -276,9 +297,6 @@ Remove outliers (by participant) for time series variables (VE, HR and RR)
 5. remove them
 
 ```{r remove outliers}
-library(dplyr)
-library(zoo)
-
 window_size <- 30 #have tried other values but 30 is the most backed by the literature
 
 # minute ventilation 
@@ -291,56 +309,58 @@ PAN_data <- PAN_data %>%
   mutate(
     outlier = abs(VE - MA) > 3 * SD # detect datapoints outside of 3 SDs from the local mean
   ) %>%
-  filter(!outlier) %>% # remove outlier datapoints
-  ungroup()
+  ungroup() %>% 
+  dplyr::select(-c(MA,SD))
 
-# heart rate
-PAN_data <- PAN_data %>%
-  group_by(PAN_ID) %>% 
-  mutate(
-    MA = rollapply(HR, width = window_size, FUN = mean, align = "center", fill = NA),
-    SD = rollapply(HR, width = window_size, FUN = sd, align = "center", fill = NA)
-  ) %>%
-  mutate(
-    outlier = abs(HR - MA) > 3 * SD
-  ) %>%
-  filter(!outlier) %>%
-  ungroup()
-
-# breathing rate (outliers as NA)
+# Heart Rate - Process only if not an outlier
 PAN_data <- PAN_data %>%
   group_by(PAN_ID) %>%
   mutate(
-    MA = rollapply(RR, width = window_size, FUN = mean, align = "center", fill = NA),
-    SD = rollapply(RR, width = window_size, FUN = sd, align = "center", fill = NA),
-    outlier = abs(RR - MA) > 3 * SD,
-    RR = if_else(outlier, NA_real_, RR)
+    # Only process non-outliers
+    HR = ifelse(outlier, HR, HR),  # Keep HR unchanged for outliers
+    MA = ifelse(!outlier, rollapply(HR, width = window_size, FUN = mean, align = "center", fill = NA), NA),
+    SD = ifelse(!outlier, rollapply(HR, width = window_size, FUN = sd, align = "center", fill = NA), NA),
+    outlier = ifelse(!outlier, abs(HR - MA) > 3 * SD, outlier)  # Update outliers only for non-marked rows
   ) %>%
-  ungroup()
+  ungroup() %>%
+  dplyr::select(-c(MA, SD))  # Remove temporary variables
 
-# breathing rate (removing outlier rows) - for the model
+# Breathing Rate - Process only if not an outlier, then filter
 PAN_data <- PAN_data %>%
-  group_by(PAN_ID) %>% 
+  group_by(PAN_ID) %>%
   mutate(
-    MA = rollapply(RR, width = window_size, FUN = mean, align = "center", fill = NA),
-    SD = rollapply(RR, width = window_size, FUN = sd, align = "center", fill = NA)
+    # Only process non-outliers
+    RR = ifelse(outlier, RR, RR),  # Keep RR unchanged for outliers
+    MA = ifelse(!outlier, rollapply(RR, width = window_size, FUN = mean, align = "center", fill = NA), NA),
+    SD = ifelse(!outlier, rollapply(RR, width = window_size, FUN = sd, align = "center", fill = NA), NA),
+    outlier = ifelse(!outlier, abs(RR - MA) > 3 * SD, outlier)  # Update outliers only for non-marked rows
   ) %>%
-  mutate(
-    outlier = abs(RR - MA) > 3 * SD
-  ) %>%
-  filter(!outlier) %>%
-  ungroup()
+  filter(!outlier) %>%  # Filter out rows marked as outliers
+  ungroup() %>%
+  dplyr::select(-c(MA, SD, outlier))  # Remove temporary variables
+
 ```
 
-Delete datapoints past anaerobic threshold (RER >= 1.0 consistently for 15 seconds)
+delete datapoints past peak VE, as they indicate a recovery phase that might not have been recorded as such
+```{r}
+# data_healthy <- data_healthy %>%
+#   group_by(PAN_ID) %>%
+#   mutate(max_index = which(VE == max(VE))[1]) %>%
+#   filter(row_number() <= max_index) %>%
+#   select(-max_index) %>%
+#   ungroup()
+
+```
+
+Delete data points past anaerobic threshold (RER >= 1.0 consistently for 15 seconds)
 ```{r}
 anaerobic_threshold <- PAN_data %>%
   group_by(PAN_ID) %>%
   arrange(Time) %>%
-  mutate(RER_above_1 = RER >= 1.0,                  # Identify where RER > 1.0
-         anaerobic_threshold = cumsum(!RER_above_1),    # Reset when RER <= 1.0
+  mutate(RER_above_1 = RER >= 1.0,  # Identify where RER > 1.0
+         anaerobic_threshold = cumsum(!RER_above_1),# Reset when RER <= 1.0
          flag = ave(RER_above_1, anaerobic_threshold, 
-                    FUN = cumsum) > 15) %>%
+                    FUN = cumsum) > 30) %>%
   ungroup() %>%
   filter(flag)
 
@@ -348,7 +368,8 @@ PAN_data <- PAN_data %>%
   anti_join(anaerobic_threshold, by = c("PAN_ID", "Time"))
 ```
 
-Disease as a factor variable for the cohort separation
+
+Disease as a factor variable with labels
 ```{r}
 PAN_data <- PAN_data %>%
   mutate(
@@ -360,145 +381,87 @@ PAN_data <- PAN_data %>%
   )
 ```
 
+Separate datasets by cohorts for exercise intensity variable generation 
 ```{r datasets by cohorts}
 data_healthy <- PAN_data[PAN_data$disease == "Healthy",]
+data_healthy <- data_healthy %>% dplyr::select(-c(copd_sev,asthma_sev))
 data_COPD <- PAN_data[PAN_data$disease == "COPD",]
+data_COPD <- data_COPD %>% dplyr::select(-asthma_sev)
 data_asthma <- PAN_data[PAN_data$disease == "Asthma",]
+data_asthma <- data_asthma %>% dplyr::select(-copd_sev)
 ```
 
-Exercise intensity calculations
+
+REMOVE
+Exercise intensity variable generation (by cohorts to adjust for disease)
 ```{r}
-
-## Healthy and asthma
-# by age
-data_healthy <- data_healthy %>%
-  mutate(
-    ex_intensity = case_when(
-      # Age 20-39
-      age <= 39 & METs < 2.4 ~ "Very Light",
-      age <= 39 & METs >= 2.4 & METs <= 4.7 ~ "Light",
-      age <= 39 & METs >= 4.8 & METs <= 7.1 ~ "Moderate",
-      age <= 39 & METs >= 7.2 & METs <= 10.1 ~ "Vigorous",
-      age <= 39 & METs >= 10.2 ~ "Near to Maximal",
-      
-      # Age 40-64
-      age >= 40 & age <= 64 & METs < 2.0 ~ "Very Light",
-      age >= 40 & age <= 64 & METs >= 2.0 & METs <= 3.9 ~ "Light",
-      age >= 40 & age <= 64 & METs >= 4.0 & METs <= 5.9 ~ "Moderate",
-      age >= 40 & age <= 64 & METs >= 6.0 & METs <= 8.4 ~ "Vigorous",
-      age >= 40 & age <= 64 & METs >= 8.5 ~ "Near to Maximal",
-      
-      # Age >= 65
-      age >= 65 & METs < 1.6 ~ "Very Light",
-      age >= 65 & METs >= 1.6 & METs <= 3.1 ~ "Light",
-      age >= 65 & METs >= 3.2 & METs <= 4.7 ~ "Moderate",
-      age >= 65 & METs >= 4.8 & METs <= 6.7 ~ "Vigorous",
-      age >= 65 & METs >= 6.8 ~ "Near to Maximal",
-      
-      TRUE ~ NA_character_
+# Healthy and asthma - generate a function to not repeat twice
+calculate_ex_intensity <- function(data) {
+  data %>%
+    mutate(
+      ex_intensity = case_when(
+        # Age 20-39
+        age <= 39 & METs < 2.4 ~ "Very Light",
+        age <= 39 & METs < 4.8 ~ "Light",
+        age <= 39 & METs < 7.2 ~ "Moderate",
+        age <= 39 & METs < 10.2 ~ "Vigorous",
+        age <= 39 & METs >= 10.2 ~ "Near to Maximal",
+        
+        # Age 40-64
+        age >= 40 & age <= 64 & METs < 2.0 ~ "Very Light",
+        age >= 40 & age <= 64 & METs < 4.0 ~ "Light",
+        age >= 40 & age <= 64 & METs < 6.0 ~ "Moderate",
+        age >= 40 & age <= 64 & METs < 8.5 ~ "Vigorous",
+        age >= 40 & age <= 64 & METs >= 8.5 ~ "Near to Maximal",
+        
+        # Age >= 65
+        age >= 65 & METs < 1.6 ~ "Very Light",
+        age >= 65 & METs < 3.2 ~ "Light",
+        age >= 65 & METs < 4.8 ~ "Moderate",
+        age >= 65 & METs < 6.8 ~ "Vigorous",
+        age >= 65 & METs >= 6.8 ~ "Near to Maximal",
+        
+        TRUE ~ NA_character_
+      ),
+      ex_intensity = factor(
+        ex_intensity,
+        levels = c("Very Light", "Light", "Moderate", "Vigorous", "Near to Maximal"),
+        ordered = FALSE
+      )
     )
-  )
-data_healthy <- data_healthy %>%
-  mutate(
-    ex_intensity = factor(
-      ex_intensity,
-      levels = c("Very Light", "Light", "Moderate", "Vigorous", "Near to Maximal"),
-      ordered = TRUE
-    )
-  )
+}
 
-# Create a bar plot to see the distribution
-ggplot(data_healthy, aes(x = ex_intensity)) +
-  geom_bar(fill = "skyblue", color = "black") +
-  labs(
-    title = "Healthy distribution of Exercise Intensity using METs by age",
-    x = "Exercise Intensity",
-    y = "Count"
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+# Apply the function to healthy and asthma
+data_healthy <- calculate_ex_intensity(data_healthy)
+data_asthma <- calculate_ex_intensity(data_asthma)
 
-# asthma
-data_asthma <- data_asthma %>%
-  mutate(
-    ex_intensity = case_when(
-      # Age 20-39
-      age <= 39 & METs < 2.4 ~ "Very Light",
-      age <= 39 & METs >= 2.4 & METs <= 4.7 ~ "Light",
-      age <= 39 & METs >= 4.8 & METs <= 7.1 ~ "Moderate",
-      age <= 39 & METs >= 7.2 & METs <= 10.1 ~ "Vigorous",
-      age <= 39 & METs >= 10.2 ~ "Near to Maximal",
-      
-      # Age 40-64
-      age >= 40 & age <= 64 & METs < 2.0 ~ "Very Light",
-      age >= 40 & age <= 64 & METs >= 2.0 & METs <= 3.9 ~ "Light",
-      age >= 40 & age <= 64 & METs >= 4.0 & METs <= 5.9 ~ "Moderate",
-      age >= 40 & age <= 64 & METs >= 6.0 & METs <= 8.4 ~ "Vigorous",
-      age >= 40 & age <= 64 & METs >= 8.5 ~ "Near to Maximal",
-      
-      # Age >= 65
-      age >= 65 & METs < 1.6 ~ "Very Light",
-      age >= 65 & METs >= 1.6 & METs <= 3.1 ~ "Light",
-      age >= 65 & METs >= 3.2 & METs <= 4.7 ~ "Moderate",
-      age >= 65 & METs >= 4.8 & METs <= 6.7 ~ "Vigorous",
-      age >= 65 & METs >= 6.8 ~ "Near to Maximal",
-      
-      TRUE ~ NA_character_
-    )
-  )
-data_asthma <- data_asthma %>%
-  mutate(
-    ex_intensity = factor(
-      ex_intensity,
-      levels = c("Very Light", "Light", "Moderate", "Vigorous", "Near to Maximal"),
-      ordered = TRUE
-    )
-  )
-
-ggplot(data_asthma, aes(x = ex_intensity)) +
-  geom_bar(fill = "skyblue", color = "black") +
-  labs(
-    title = "Healthy distribution of Exercise Intensity using METs by age",
-    x = "Exercise Intensity",
-    y = "Count"
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
-
-```
-
-
-```{r by ages on COPD}
+## COPD - ages adjusted according to ACSM for disease
 data_COPD <- data_COPD %>%
   mutate(
     ex_intensity = case_when(
       # Age 20-39
       age <= 39 & METs < 2.4 ~ "Very Light",
-      age <= 39 & METs >= 2.4 & METs <= 4.7 ~ "Light",
-      age <= 39 & METs >= 4.8 & METs <= 7.1 ~ "Moderate",
-      age <= 39 & METs >= 7.2 & METs <= 10.1 ~ "Vigorous",
+      age <= 39 & METs >= 2.4 & METs < 4.8 ~ "Light",
+      age <= 39 & METs >= 4.8 & METs < 7.2 ~ "Moderate",
+      age <= 39 & METs >= 7.2 & METs < 10.2 ~ "Vigorous",
       age <= 39 & METs >= 10.2 ~ "Near to Maximal",
       
       # Age 40-49
       age >= 40 & age <= 49 & METs < 2.0 ~ "Very Light",
-      age >= 40 & age <= 49 & METs >= 2.0 & METs <= 3.9 ~ "Light",
-      age >= 40 & age <= 49 & METs >= 4.0 & METs <= 5.9 ~ "Moderate",
-      age >= 40 & age <= 49 & METs >= 6.0 & METs <= 8.4 ~ "Vigorous",
+      age >= 40 & age <= 49 & METs >= 2.0 & METs < 4.0 ~ "Light",
+      age >= 40 & age <= 49 & METs >= 4.0 & METs < 6.0 ~ "Moderate",
+      age >= 40 & age <= 49 & METs >= 6.0 & METs < 8.5 ~ "Vigorous",
       age >= 40 & age <= 49 & METs >= 8.5 ~ "Near to Maximal",
       
       # Age >= 50 (COPD patients over 50 are considered older adults (ACSM))
       age >= 50 & METs < 1.6 ~ "Very Light",
-      age >= 50 & METs >= 1.6 & METs <= 3.1 ~ "Light",
-      age >= 50 & METs >= 3.2 & METs <= 4.7 ~ "Moderate",
-      age >= 50 & METs >= 4.8 & METs <= 6.7 ~ "Vigorous",
+      age >= 50 & METs >= 1.6 & METs < 3.2 ~ "Light",
+      age >= 50 & METs >= 3.2 & METs < 4.8 ~ "Moderate",
+      age >= 50 & METs >= 4.8 & METs < 6.8 ~ "Vigorous",
       age >= 50 & METs >= 6.8 ~ "Near to Maximal",
       
       TRUE ~ NA_character_
-    )
-  )
-
-data_COPD <- data_COPD %>%
-  mutate(
+    ),
     ex_intensity = factor(
       ex_intensity,
       levels = c("Very Light", "Light", "Moderate", "Vigorous", "Near to Maximal"),
@@ -506,21 +469,17 @@ data_COPD <- data_COPD %>%
     )
   )
 
-
-# Create a bar plot to see the distribution
-ggplot(data_COPD, aes(x = ex_intensity)) +
-  geom_bar(fill = "skyblue", color = "black") +
-  labs(
-    title = "COPD Distribution of Exercise Intensity using METS and age",
-    x = "Exercise Intensity",
-    y = "Count"
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-
 ```
 
+
+exportar datasets
+```{r}
+write.csv(data_healthy, file = "data_healthy_08_01.csv", row.names = FALSE)
+write.csv(data_COPD, file = "data_COPD_18_01.csv", row.names = FALSE)
+write.csv(data_asthma, file = "data_asthma_08_01.csv", row.names = FALSE)
+write.csv(PAN_data, file = "PAN_data.csv", row.names = FALSE)
+
+```
 
 
 EXPLORATORY DATA ANALYSIS
@@ -536,14 +495,11 @@ makeDataReport(data_asthma, output = "html", replace = TRUE)
 ```
 
 
-DESCRIPTIVES
+DESCRIPTIVES to generate descriptive statistics tables
 
 ```{r}
 ### PARTICIPANT DESCRIPTORS
-
-library(table1)
-
-table1(~ factor(sex) + age + height + weight + factor(ethnic) +  factor(smoke) + factor(asthma_sev) + factor(copd_sev) | disease, data=redcap_data, overall=c(left="Total"))
+table1(~ factor(sex) + age + height + weight + factor(ethnic) +  factor(smoke) + factor(asthma_sev) + factor(copd_sev) + fev1 + fev1_pred + fvc + fvc_pred + fev1_fvc_r | disease, data=redcap_data, overall=c(left="Total"))
 
 # treatment table
 table1(~ factor(treatment___1) + factor(treatment___2) + factor(treatment___3) + factor(treatment___4) + factor(treatment___5) + factor(treatment___6) + factor(treatment___7) + factor(treatment___8)| disease, data=redcap_data, overall=c(left="Total"))
@@ -554,18 +510,14 @@ table1(~ factor(treatment___1) + factor(treatment___2) + factor(treatment___3) +
 Descriptives of physiological variables
 
 ```{r}
-
-## PHYSIOLOGICAL VARIABLES TABLE DESCRIPTORS (missing some, i dont know what they are called in the ds)
+## PHYSIOLOGICAL VARIABLES DESCRIPTORS
 table1(~ VE + Ti + RR + VO2 + HR | disease, data=PAN_data, overall=c(left="Total"))
 
 # Rest is when step is Rep (will only include some of the participants as they dont all have rep)
 data_rest <- PAN_data[(PAN_data$Step=='Rep'),]
 
-# table for reposo dataset
+# values at rest
 table1(~ VE + Ti + RR + VO2 + HR | disease, data=data_rest, overall=c(left="Total"))
-
-# FEV1 , FVC , etc
-table1(~ fev1 + fev1_pred + fvc + fvc_pred + fev1_fvc_r | disease, data = redcap_data, overall = c(left = "Total"))
 ```
 
 
@@ -692,9 +644,53 @@ summary_stats <- data_asthma %>%
 summary_stats
 ```
 
+
+lo de arriba optimizado
+```{r}
+library(dplyr)
+
+# Function to calculate mean and sd of a given variable
+calculate_summary <- function(data, group_var, measure_var) {
+  data %>%
+    group_by({{ group_var }}) %>%
+    summarise(!!measure_var := unique(.data[[measure_var]])) %>% # Take unique measure_var per group
+    summarise(
+      mean = mean(.data[[measure_var]], na.rm = TRUE),
+      sd = sd(.data[[measure_var]], na.rm = TRUE)
+    )
+}
+
+# Datasets list
+datasets <- list(
+  Total = PAN_data,
+  No_RD = data_healthy,
+  COPD = data_COPD,
+  Asthma = data_asthma
+)
+
+# Variables to summarize
+variables <- c("VE_max", "RR_max", "HR_max", "VO2_max")
+
+# Loop through datasets and variables to calculate statistics
+results <- list()
+
+for (var in variables) {
+  for (name in names(datasets)) {
+    dataset <- datasets[[name]]
+    stats <- calculate_summary(dataset, PAN_ID, var)
+    results[[paste(name, var, sep = "_")]] <- stats
+  }
+}
+
+# Print results
+results
+
+```
+
+
 Length of CPETs
 ```{r}
-## healthy cohort
+# healthy cohort
 test_lengths <- data_healthy %>%
   group_by(PAN_ID) %>%
   summarise(test_length = max(Time, na.rm = TRUE)) %>%
@@ -707,7 +703,7 @@ test_lengths <- test_lengths %>%
 test_length_counts <- test_lengths %>%
   count(test_length_rounded, name = "num_participants")
 
-# Plot the number of tests for each  length
+# Plot the number of tests for each length
 test_lengths_healthy <- ggplot(test_length_counts, aes(x = test_length_rounded, y = num_participants)) +
   geom_bar(stat = "identity", fill = "skyblue", color = "black") +
   labs(
@@ -718,12 +714,7 @@ test_lengths_healthy <- ggplot(test_length_counts, aes(x = test_length_rounded, 
 ggsave("test_lengths_healthy.png",plot = test_lengths_healthy, width = 10, height = 10)
 
 
-## same for COPD
-data_COPD <- data_COPD %>%
-  group_by(PAN_ID) %>%
-  mutate(test_length = max(Time, na.rm = TRUE)) %>%
-  ungroup()
-
+# same for COPD
 test_lengths <- data_COPD %>%
   group_by(PAN_ID) %>%
   summarise(test_length = max(Time, na.rm = TRUE)) %>%
@@ -746,12 +737,7 @@ test_lengths_COPD <- ggplot(test_length_counts, aes(x = test_length_rounded, y =
 ggsave("test_lengths_COPD.png",plot = test_lengths_COPD, width = 10, height = 10)
 
 
-## same for asthma
-data_asthma <- data_asthma %>%
-  group_by(PAN_ID) %>%
-  mutate(test_length = max(Time, na.rm = TRUE)) %>%
-  ungroup()
-
+# same for asthma
 test_lengths <- data_asthma %>%
   group_by(PAN_ID) %>%
   summarise(test_length = max(Time, na.rm = TRUE)) %>%
@@ -773,4 +759,64 @@ test_lengths_asthma <- ggplot(test_length_counts, aes(x = test_length_rounded, y
 ggsave("test_lengths_asthma.png",plot = test_lengths_asthma, width = 10, height = 10)
 
 ```
+
+TIME RESOLUTIONS - 5s, 15s, 30s, 1min
+
+```{r}
+# currently at breath by breath
+
+# Time in POSIXct format
+cpet_data$Time <- as.POSIXct(cpet_data$Time, format = )
+
+###### 5 second intervals
+cpet_data_10s <- cpet_data %>%
+  mutate(Time = floor_date(Time, unit = "1 second")) %>% 
+  group_by(PAN_ID, Time_10s) %>%
+  summarise(across(everything(), mean, na.rm = TRUE), .groups = 'drop')
+
+cpet_data_10s$Time_10s <- as.numeric(cpet_data_10s$Time_10s)
+# Fix Time variable
+seconds <- as.numeric(cpet_data_10s$Time_10s)
+cpet_data_10s$Time_10s <- hms::as_hms(seconds)
+cpet_data_10s$Time <- cpet_data_10s$Time_10s
+
+
+######  30 second intervals
+cpet_data_30s <- cpet_data %>%
+  mutate(Time_30s = floor_date(Time, unit = "30 seconds")) %>%
+  group_by(PAN_ID, Time_30s) %>%
+  summarise(across(everything(), mean, na.rm = TRUE), .groups = 'drop')
+
+cpet_data_30s$Time_30s <- as.numeric(cpet_data_30s$Time_30s)
+# Fix Time variable
+seconds <- as.numeric(cpet_data_30s$Time_30s)
+cpet_data_30s$Time_30s <- hms::as_hms(seconds)
+cpet_data_30s$Time <- cpet_data_30s$Time_30s
+
+
+######  1 minute intervals
+cpet_data_60s <- cpet_data %>%
+  mutate(Time_60s = floor_date(Time, unit = "1 minute")) %>%
+  group_by(PAN_ID, Time_60s) %>%
+  summarise(across(everything(), mean, na.rm = TRUE), .groups = 'drop')
+
+cpet_data_60s$Time_60s <- as.numeric(cpet_data_60s$Time_60s)
+# Fix Time variable
+seconds <- as.numeric(cpet_data_60s$Time_60s)
+cpet_data_60s$Time_60s <- hms::as_hms(seconds)
+cpet_data_60s$Time <- cpet_data_60s$Time_60s
+
+
+# merge redcap data with aggregated CPET data (for )
+PAN_data_10s <- cpet_data_10s %>%
+  left_join(redcap_data, by =  c("PAN_ID_short" = "PAN_ID"))
+
+PAN_data_30s <- cpet_data_30s %>%
+  left_join(redcap_data, by =  c("PAN_ID_short" = "PAN_ID"))
+
+PAN_data_60s <- cpet_data_60s %>%
+  left_join(redcap_data, by = c("PAN_ID_short" = "PAN_ID"))
+
+```
+
 
